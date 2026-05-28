@@ -1,0 +1,8 @@
+Trong tuần 1, bắt đầu làm quen với esp-cam và mega128-V2,
+
++ Tìm hiểu về cách lập trình web bằng html, css, javascript,
++ Tìm hiểu về các giao thức truyền dữ liệu của hai mạch,
++ Tìm hiểu về cách xây dựng một web server trong esp:
+	- Cách để esp phát wifi và cách để esp nhận wifi,
+	- Cách để truy cập vào server web esp được tạo bằng địa chỉ IP local,
++ Thử các cách truyền dữ liệu đến mega128-V2 hoặc đến esp-cam,
