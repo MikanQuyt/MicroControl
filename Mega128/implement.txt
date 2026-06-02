@@ -18,35 +18,40 @@ Power: 5V (from LM2596S or external regulator)
   SPI Config: Slave Mode, Mode 0, MSB First, 1 MHz
 
 -----------------------------------------------------
-  PORT B - PWM (Timer1) -> TB6612FNG
+  PORT E - PWM Motor (Timer3) -> TB6612FNG
 -----------------------------------------------------
-  PB5 (OC1A) -> PWMA (TB6612FNG)       [Output, Motor A speed]
-  PB6 (OC1B) -> PWMB (TB6612FNG)       [Output, Motor B speed]
+  PE3 (OC3A) -> PWMA (TB6612FNG)       [Output, Motor A speed]
+  PE4 (OC3B) -> PWMB (TB6612FNG)       [Output, Motor B speed]
 
-  Timer1: Fast PWM 8-bit, Prescaler=64, ~976 Hz
+  Timer3: Fast PWM 8-bit, Prescaler=64, ~976 Hz
 
 -----------------------------------------------------
-  PORT A - Motor Direction -> TB6612FNG
+  PORT C - Motor Direction -> TB6612FNG
 -----------------------------------------------------
-  PA0 -> AIN1 (TB6612FNG)    [Output, Motor A direction]
-  PA1 -> AIN2 (TB6612FNG)    [Output, Motor A direction]
-  PA2 -> BIN1 (TB6612FNG)    [Output, Motor B direction]
-  PA3 -> BIN2 (TB6612FNG)    [Output, Motor B direction]
-  PA4 -> STBY (TB6612FNG)    [Output, Standby control]
+  PC0 -> AIN1 (TB6612FNG)    [Output, Motor A direction]
+  PC1 -> AIN2 (TB6612FNG)    [Output, Motor A direction]
+  PC2 -> BIN1 (TB6612FNG)    [Output, Motor B direction]
+  PC3 -> BIN2 (TB6612FNG)    [Output, Motor B direction]
 
   Motor A = Left wheel,  Motor B = Right wheel
+  * NOTE: Motor A speed is compensated to 82% (MOTOR_A_PERCENT) to balance with Motor B.
+
+-----------------------------------------------------
+  PORT A - Motor Standby -> TB6612FNG
+-----------------------------------------------------
+  PA4 -> STBY (TB6612FNG)    [Output, Standby control]
+
   STBY HIGH = motors enabled, STBY LOW = motors disabled
 
 -----------------------------------------------------
-  PORT E - Status LEDs
+  PORT A - Camera Servo (Timer1)
 -----------------------------------------------------
-  PE2 -> LED1 (+ resistor -> GND)    [Output, SPI activity]
-  PE3 -> LED2 (+ resistor -> GND)    [Output, SPI activity]
+  PA6 -> Servo signal (SG90)  [Output, Camera pan]
+  * NOTE: Code sets PA6, but ATmega128 hardware PWM OC1C is physically on PB7.
 
------------------------------------------------------
-  PORT B - Camera Servo (reserved, not yet implemented)
------------------------------------------------------
-  PB7 (OC1C) -> Servo signal (SG90)  [Output, Camera pan]
+  Timer1: Fast PWM mode 14, ICR1=4999, Prescaler=64, 50Hz
+  OCR1C: 250 (~1ms, 0°) -> 375 (~1.5ms, 90°) -> 500 (~2ms, 180°)
+  Step: ~10° per L/R command
 
 -----------------------------------------------------
   TB6612FNG Power Connections
