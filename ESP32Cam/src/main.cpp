@@ -1,19 +1,16 @@
-//Thêm thư viện
 #include "esp_camera.h"
+#include "esp_http_server.h"
 #include "soc/rtc_cntl_reg.h"
 #include "soc/soc.h"
 #include <SPI.h>
-#include <WebServer.h>
 #include <WiFi.h>
 
-//Cấu hình Wifi từ điện thoại
-const char *ssid = "Mikan Phone"; //Tên wifi
-const char *password = "20102005"; //Mật khẩu wifi
+const char *ssid = "Mikan Phone";
+const char *password = "20102005";
 
-//Khởi tạo WebServer
-WebServer server(80);
+httpd_handle_t camera_httpd = NULL;
+httpd_handle_t stream_httpd = NULL;
 
-//Khai báo chân cho ESP CAM
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -31,15 +28,12 @@ WebServer server(80);
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
-//Khai báo chân để kết nối Mega128 bằng giao thức SPI
 #define SPI_SCK_PIN 14
 #define SPI_MOSI_PIN 13
 #define SPI_SS_PIN 15
 
-//Khởi tạo con trỏ SPIClass cho bộ HSPI
 SPIClass *hspi = NULL;
 
-//Giao diện Web
 const char INDEX_HTML[] = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -56,7 +50,6 @@ body { font-family: sans-serif;
   padding: 10px; 
 }
 
-/* Bố cục hàng ngang chứa 2 nút LR và Camera */
 .main-layout { 
   display: flex; 
   align-items: center; 
@@ -66,7 +59,6 @@ body { font-family: sans-serif;
   margin: 0 auto 20px auto; 
 }
 
-/* Khung video sẽ tự co giãn lấp đầy không gian giữa 2 nút */
 .video-container { 
   flex-grow: 1; 
   height: 300px; 
@@ -85,7 +77,6 @@ body { font-family: sans-serif;
   object-fit: cover; 
 }
 
-/* Nút xoay 2 bên (hình chữ nhật đứng) */
 .side-btn { 
   background-color: #1976d2; 
   color: white; 
@@ -101,7 +92,6 @@ body { font-family: sans-serif;
 }
 .side-btn:active { background-color: #1565c0; }
 
-/* Cụm điều hướng W-A-S-D bên dưới */
 .controls { 
   display: grid; 
   grid-template-columns: repeat(3, 80px); 
@@ -129,7 +119,6 @@ body { font-family: sans-serif;
 .down { grid-column: 2; grid-row: 2; }
 .right { grid-column: 3; grid-row: 2; }
 
-/* Các nút chức năng (Connect, Pause) */
 .util-controls { 
   display: flex; 
   justify-content: center; 
@@ -150,7 +139,7 @@ body { font-family: sans-serif;
 }
 .util-btn.pause { background-color: #ff9800; }
 .util-btn:active { filter: brightness(0.8); }
-/* Speed Control */
+
 .speed-control { 
   margin: 15px auto; 
   max-width: 400px; 
@@ -207,20 +196,16 @@ input[type=range] {
 </div>
 
 <script>
-// gửi lệnh điều khiển
 function s(cmd) {
   fetch(`/action?go=${cmd}`);
 }
 
-// cập nhật tốc độ
 function updateSpeed(val) {
   document.getElementById('speedValue').innerText = val;
-  // Gửi ký tự '0'-'9' cho tốc độ 0-9, và 'M' (Max) cho tốc độ 10
   const chars = ['0','1','2','3','4','5','6','7','8','9','M'];
   s(chars[val]);
 }
 
-// Điều khiển bằng bàn phím
 document.addEventListener('keydown', function(event) {
   if (event.repeat) return; 
   const key = event.key.toUpperCase();
@@ -233,7 +218,6 @@ document.addEventListener('keydown', function(event) {
     case 'R': s('R'); break; 
     case 'C': s('C'); break; 
     case 'P': s('P'); break; 
-    // Phím tắt tốc độ
     case '0': document.getElementById('speedSlider').value = 0; updateSpeed(0); break;
     case '1': document.getElementById('speedSlider').value = 1; updateSpeed(1); break;
     case '2': document.getElementById('speedSlider').value = 2; updateSpeed(2); break;
@@ -252,69 +236,204 @@ document.addEventListener('keyup', function(event) {
   if (['W', 'A', 'S', 'D', 'L', 'R'].includes(key)) s('X');
 });
 
-// tải ảnh thông minh không bị nghẽn
 window.onload = function() {
-  const img = document.getElementById("video-stream");
-  function fetchNextFrame() {
-    img.src = `/capture?_cb=` + Date.now();
-  }
-  // Khi ảnh cũ đã tải xong -> lập tức gọi ảnh mới không cần chờ
-  img.onload = function() {
-    requestAnimationFrame(fetchNextFrame);
-  };
-  // Nếu mạng lag bị đứt ảnh, chờ một chút rồi kết nối lại
-  img.onerror = function() {
-    setTimeout(fetchNextFrame, 500);
-  };
-  // Kích mồi phát đầu tiên
-  fetchNextFrame();
+  var loc = window.location;
+  document.getElementById("video-stream").src = loc.protocol + "//" + loc.hostname + ":81/stream";
 };
     </script>
   </body>
 </html>
 )rawliteral";
 
-//Hàm gửi 1 ký tự đến Mega128-V2 qua giao thức SPI
 void sendDataSPI(char data) {
-  //Bắt đầu giao thức SPI với tốc độ 1MHz an toàn cho Mega128-V2, truyền bit cao (MSB) trước
+  Serial.print("[SPI TX] '");
+  Serial.print(data);
+  Serial.print("' -> ");
+  switch (data) {
+  case 'W':
+    Serial.println("Forward");
+    break;
+  case 'S':
+    Serial.println("Backward");
+    break;
+  case 'A':
+    Serial.println("Turn Left");
+    break;
+  case 'D':
+    Serial.println("Turn Right");
+    break;
+  case 'L':
+    Serial.println("Camera Left");
+    break;
+  case 'R':
+    Serial.println("Camera Right");
+    break;
+  case 'C':
+    Serial.println("Connect (STBY H)");
+    break;
+  case 'P':
+    Serial.println("Pause (STBY L)");
+    break;
+  case 'X':
+    Serial.println("Stop");
+    break;
+  case 'M':
+    Serial.println("Speed MAX");
+    break;
+  case '0':
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+  case '8':
+  case '9':
+    Serial.print("Speed ");
+    Serial.println(data);
+    break;
+  default:
+    Serial.print("Unknown (0x");
+    Serial.print((uint8_t)data, HEX);
+    Serial.println(")");
+    break;
+  }
+
   hspi->beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
-
-  //Kéo Slave Select xuống LOW để báo Mega128-V2 chuẩn bị nhận
-  digitalWrite(SPI_SS_PIN,LOW); 
-      
-  //Delay nhỏ chuẩn bị đường truyền (Fix nhiễu SPI)
-  delayMicroseconds(50);          
-  
-  //Đẩy dữ liệu ra chân MOSI
-  hspi->transfer(data);           
-  
-  //Delay đảm bảo Mega128 đã đọc xong
-  delayMicroseconds(50);          
-  
-  //Kéo Slave Select lên HIGH chốt dữ liệu
-  digitalWrite(SPI_SS_PIN, HIGH); 
-
-  //Kết thúc giao thức SPI
+  digitalWrite(SPI_SS_PIN, LOW);
+  delayMicroseconds(50);
+  hspi->transfer(data);
+  delayMicroseconds(50);
+  digitalWrite(SPI_SS_PIN, HIGH);
   hspi->endTransaction();
 }
 
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char *_STREAM_CONTENT_TYPE =
+    "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char *_STREAM_PART =
+    "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+
+esp_err_t index_handler(httpd_req_t *req) {
+  httpd_resp_set_type(req, "text/html");
+  return httpd_resp_send(req, INDEX_HTML, strlen(INDEX_HTML));
+}
+
+esp_err_t action_handler(httpd_req_t *req) {
+  char buf[100];
+  esp_err_t ret = httpd_req_get_url_query_str(req, buf, sizeof(buf));
+  if (ret == ESP_OK) {
+    char param[32];
+    if (httpd_query_key_value(buf, "go", param, sizeof(param)) == ESP_OK) {
+      char cmd_char = param[0];
+      sendDataSPI(cmd_char);
+    }
+  }
+  httpd_resp_send(req, "OK", 2);
+  return ESP_OK;
+}
+
+esp_err_t stream_handler(httpd_req_t *req) {
+  camera_fb_t *fb = NULL;
+  esp_err_t res = ESP_OK;
+  size_t _jpg_buf_len = 0;
+  uint8_t *_jpg_buf = NULL;
+  char part_buf[64];
+
+  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+  if (res != ESP_OK) {
+    return res;
+  }
+
+  while (true) {
+    fb = esp_camera_fb_get();
+    if (!fb) {
+      Serial.println("Camera capture failed");
+      res = ESP_FAIL;
+    } else {
+      _jpg_buf_len = fb->len;
+      _jpg_buf = fb->buf;
+    }
+
+    if (res == ESP_OK) {
+      size_t hlen = snprintf(part_buf, 64, _STREAM_PART, _jpg_buf_len);
+      res = httpd_resp_send_chunk(req, part_buf, hlen);
+    }
+    if (res == ESP_OK) {
+      res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
+    }
+    if (res == ESP_OK) {
+      res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY,
+                                  strlen(_STREAM_BOUNDARY));
+    }
+
+    if (fb) {
+      esp_camera_fb_return(fb);
+      fb = NULL;
+      _jpg_buf = NULL;
+    } else if (res == ESP_OK) {
+      break;
+    }
+
+    if (res != ESP_OK) {
+      break;
+    }
+
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+  return res;
+}
+
+void startCameraServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+
+  httpd_uri_t index_uri = {.uri = "/",
+                           .method = HTTP_GET,
+                           .handler = index_handler,
+                           .user_ctx = NULL};
+
+  httpd_uri_t action_uri = {.uri = "/action",
+                            .method = HTTP_GET,
+                            .handler = action_handler,
+                            .user_ctx = NULL};
+
+  if (httpd_start(&camera_httpd, &config) == ESP_OK) {
+    httpd_register_uri_handler(camera_httpd, &index_uri);
+    httpd_register_uri_handler(camera_httpd, &action_uri);
+    Serial.println("Server điều khiển đã khởi động (port 80)");
+  }
+
+  httpd_config_t stream_config = HTTPD_DEFAULT_CONFIG();
+  stream_config.server_port = 81;
+  stream_config.ctrl_port = 32769; 
+
+  httpd_uri_t stream_uri = {.uri = "/stream",
+                            .method = HTTP_GET,
+                            .handler = stream_handler,
+                            .user_ctx = NULL};
+
+  if (httpd_start(&stream_httpd, &stream_config) == ESP_OK) {
+    httpd_register_uri_handler(stream_httpd, &stream_uri);
+    Serial.println("Server stream đã khởi động (port 81)");
+  }
+}
+
 void setup() {
-  //Tắt tính năng kiểm tra sụt áp hệ thống, không bị ngắt chương trình hoạt động dù camera đã Ok !
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   Serial.begin(115200);
   Serial.println("\nĐang khởi động hệ thống...");
 
-  //Khai báo và khởi tạo SPI
   pinMode(SPI_SS_PIN, OUTPUT);
-  digitalWrite(SPI_SS_PIN, HIGH); //Giữ chân SS ở mức cao (chưa xác định chip nhận)
+  digitalWrite(SPI_SS_PIN, HIGH); 
 
   hspi = new SPIClass(HSPI);
-  //Khởi tạo SPI: SCK, MISO (-1 vì chỉ truyền 1 chiều), MOSI, SS
   hspi->begin(SPI_SCK_PIN, -1, SPI_MOSI_PIN, SPI_SS_PIN);
-  delay(10); //Dừng lại 10ms cho chân SPI ổn định
+  delay(10); 
 
-  //Cấu hình Camera
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -338,8 +457,8 @@ void setup() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_QQVGA; //Đổi xuống độ phân giải thấp nhất (160x120)
-    config.jpeg_quality = 25;            //Ảnh mờ nhưng dung lượng siêu nhỏ nên cho video khá mượt
+    config.frame_size = FRAMESIZE_QQVGA; 
+    config.jpeg_quality = 25; 
     config.fb_count = 2;
   } else {
     config.frame_size = FRAMESIZE_QQVGA;
@@ -349,28 +468,22 @@ void setup() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Lỗi Camera: 0x%x\n", err);
-    return;
+    Serial.printf("Lỗi Camera: 0x%x (Camera không hoạt động, nhưng SPI và WiFi "
+                  "vẫn chạy)\n",
+                  err);
+  } else {
+    Serial.println("Camera OK!");
   }
-  Serial.println("Camera OK!");
 
-  //Thêm một khoảng trễ nhỏ để ổn định điện áp sau khi khởi động Camera
-  //Việc khởi động WiFi ngay lập tức sẽ tạo ra mức tiêu thụ dòng điện rất cao làm sụt áp
   delay(1000);
 
-  //Kết nối vào WiFi hotspot
-  WiFi.mode(WIFI_STA); //Đặt mạch về chế độ Station (Nhận sóng Wifi từ thiết bị khác)
-  
-  WiFi.begin(ssid, password);
+  WiFi.mode(WIFI_STA); 
 
-  //Hạ công suất phát wifi tránh lỗi sụt áp...
-  //(Tạm thời comment lại vì sóng quá yếu có thể là nguyên nhân không bắt được WiFi)
-  //WiFi.setTxPower(WIFI_POWER_8_5dBm);
+  WiFi.begin(ssid, password);
 
   Serial.print("Đang kết nối vào WiFi: ");
   Serial.println(ssid);
 
-  //Vòng lặp chờ kết nối thành công
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -378,41 +491,11 @@ void setup() {
 
   Serial.println("\nĐã kết nối WiFi thành công!");
   Serial.print("Địa chỉ IP của Camera là: http://");
-  Serial.println(WiFi.localIP()); //Xem dòng này trên Serial Monitor để biết địa chỉ IP dành cho Camera
+  Serial.println(WiFi.localIP()); 
 
-  //Định tuyến serverweb
-  server.on("/", []() { server.send(200, "text/html", INDEX_HTML); });
-
-  //Nhận lệnh điều khiển từ web và phát qua SPI
-  server.on("/action", []() {
-    if (server.hasArg("go")) {
-      String cmd_str = server.arg("go");
-      char cmd_char = cmd_str.charAt(0); //Lấy ký tự lệnh (W, A, S, D, X, 0, 1)
-
-      sendDataSPI(cmd_char); //Kích hoạt truyền SPI
-
-      Serial.print("SPI Out: ");
-      Serial.println(cmd_char);
-    }
-    server.send(200, "text/plain", "OK");
-  });
-
-  //Capture và gửi 1 frame Camera
-  server.on("/capture", []() {
-    camera_fb_t *fb = esp_camera_fb_get();
-    if (!fb) {
-      server.send(500, "text/plain", "Loi chup anh");
-      return;
-    }
-
-    server.setContentLength(fb->len);
-    server.send(200, "image/jpeg", "");
-    server.client().write(fb->buf, fb->len);
-
-    esp_camera_fb_return(fb);
-  });
-
-  server.begin();
+  startCameraServer();
 }
 
-void loop() { server.handleClient(); }
+void loop() {
+  delay(1000);
+}
