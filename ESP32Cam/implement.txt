@@ -55,11 +55,13 @@ Power: 5V from LM2596S buck converter
 -----------------------------------------------------
   Mode: Station (STA) - connects to phone hotspot
   SSID: "Mikan Phone"
-  WebServer: port 80
+  Servers:
+    Port 80 -> Control Server (UI & Commands)
+    Port 81 -> Video Stream Server
   Endpoints:
-    /          -> Web UI (HTML control page)
-    /action    -> Receives commands (?go=W, ?go=X, etc.)
-    /capture   -> Returns 1 JPEG frame from camera
+    [Port 80] /          -> Web UI (HTML control page)
+    [Port 80] /action    -> Receives commands (?go=W, ?go=X, etc.)
+    [Port 81] /stream    -> Continuous JPEG video stream
 
 =====================================================
   COMMAND PROTOCOL (SPI, 1 byte per command)
