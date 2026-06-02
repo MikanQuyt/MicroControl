@@ -1,0 +1,70 @@
+=====================================================
+  ATmega128 - Pin Connection Map
+  Project: FPV Car Control (SPI Slave)
+  Author: mikan
+=====================================================
+
+MCU: ATmega128 @ 16 MHz
+Power: 5V (from LM2596S or external regulator)
+
+-----------------------------------------------------
+  PORT B - SPI (Slave) -> ESP32-CAM (Master)
+-----------------------------------------------------
+  PB0 (SS)   -> GPIO 15 (ESP32-CAM)    [Input]
+  PB1 (SCK)  -> GPIO 14 (ESP32-CAM)    [Input]
+  PB2 (MOSI) -> GPIO 13 (ESP32-CAM)    [Input]
+  PB3 (MISO) -> Not connected          [Output, unused by ESP]
+
+  SPI Config: Slave Mode, Mode 0, MSB First, 1 MHz
+
+-----------------------------------------------------
+  PORT B - PWM (Timer1) -> TB6612FNG
+-----------------------------------------------------
+  PB5 (OC1A) -> PWMA (TB6612FNG)       [Output, Motor A speed]
+  PB6 (OC1B) -> PWMB (TB6612FNG)       [Output, Motor B speed]
+
+  Timer1: Fast PWM 8-bit, Prescaler=64, ~976 Hz
+
+-----------------------------------------------------
+  PORT A - Motor Direction -> TB6612FNG
+-----------------------------------------------------
+  PA0 -> AIN1 (TB6612FNG)    [Output, Motor A direction]
+  PA1 -> AIN2 (TB6612FNG)    [Output, Motor A direction]
+  PA2 -> BIN1 (TB6612FNG)    [Output, Motor B direction]
+  PA3 -> BIN2 (TB6612FNG)    [Output, Motor B direction]
+  PA4 -> STBY (TB6612FNG)    [Output, Standby control]
+
+  Motor A = Left wheel,  Motor B = Right wheel
+  STBY HIGH = motors enabled, STBY LOW = motors disabled
+
+-----------------------------------------------------
+  PORT E - Status LEDs
+-----------------------------------------------------
+  PE2 -> LED1 (+ resistor -> GND)    [Output, SPI activity]
+  PE3 -> LED2 (+ resistor -> GND)    [Output, SPI activity]
+
+-----------------------------------------------------
+  PORT B - Camera Servo (reserved, not yet implemented)
+-----------------------------------------------------
+  PB7 (OC1C) -> Servo signal (SG90)  [Output, Camera pan]
+
+-----------------------------------------------------
+  TB6612FNG Power Connections
+-----------------------------------------------------
+  VM    -> Battery voltage (6-12V)
+  VCC   -> 5V (same as Mega128 VCC)
+  GND   -> Common GND
+  AO1   -> Motor A terminal 1
+  AO2   -> Motor A terminal 2
+  BO1   -> Motor B terminal 1
+  BO2   -> Motor B terminal 2
+
+=====================================================
+  COMMAND PROTOCOL (SPI, 1 byte per command)
+=====================================================
+  'W' = Forward          'S' = Backward
+  'A' = Turn Left        'D' = Turn Right
+  'L' = Camera Left      'R' = Camera Right
+  'C' = Connect (STBY H) 'P' = Pause (STBY L)
+  '0'-'9' = Speed 0-9    'M' = Max speed
+  'X' = Stop all
