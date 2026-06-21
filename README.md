@@ -2,7 +2,7 @@
 ---
 **🌐 Web: https://mikanquyt.github.io/MicroControl/**
 ---
-**📖 Project Summary**
+**📖 Project Summary:**
 The FPV Web Controller is a dual-server remote control system that bridges an ESP32-CAM with an ATmega128-V2 microcontroller via a stable 1MHz SPI connection.
 ---
 **🚀 Quick Start Guide**
