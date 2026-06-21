@@ -193,8 +193,6 @@ input[type=range] {
   <button class="btn right" onmousedown="s('D')" onmouseup="s('X')" ontouchstart="s('D')" ontouchend="s('X')">D</button>
 </div>
 
-</div>
-
 <script>
 function s(cmd) {
   fetch(`/action?go=${cmd}`);
@@ -240,8 +238,8 @@ window.onload = function() {
   var loc = window.location;
   document.getElementById("video-stream").src = loc.protocol + "//" + loc.hostname + ":81/stream";
 };
-    </script>
-  </body>
+</script>
+</body>
 </html>
 )rawliteral";
 
@@ -408,7 +406,7 @@ void startCameraServer() {
 
   httpd_config_t stream_config = HTTPD_DEFAULT_CONFIG();
   stream_config.server_port = 81;
-  stream_config.ctrl_port = 32769; 
+  stream_config.ctrl_port = 32769;
 
   httpd_uri_t stream_uri = {.uri = "/stream",
                             .method = HTTP_GET,
@@ -428,11 +426,11 @@ void setup() {
   Serial.println("\nĐang khởi động hệ thống...");
 
   pinMode(SPI_SS_PIN, OUTPUT);
-  digitalWrite(SPI_SS_PIN, HIGH); 
+  digitalWrite(SPI_SS_PIN, HIGH);
 
   hspi = new SPIClass(HSPI);
   hspi->begin(SPI_SCK_PIN, -1, SPI_MOSI_PIN, SPI_SS_PIN);
-  delay(10); 
+  delay(10);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -457,8 +455,8 @@ void setup() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_QQVGA; 
-    config.jpeg_quality = 25; 
+    config.frame_size = FRAMESIZE_QQVGA;
+    config.jpeg_quality = 25;
     config.fb_count = 2;
   } else {
     config.frame_size = FRAMESIZE_QQVGA;
@@ -477,8 +475,7 @@ void setup() {
 
   delay(1000);
 
-  WiFi.mode(WIFI_STA); 
-
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   Serial.print("Đang kết nối vào WiFi: ");
@@ -491,7 +488,7 @@ void setup() {
 
   Serial.println("\nĐã kết nối WiFi thành công!");
   Serial.print("Địa chỉ IP của Camera là: http://");
-  Serial.println(WiFi.localIP()); 
+  Serial.println(WiFi.localIP());
 
   startCameraServer();
 }
